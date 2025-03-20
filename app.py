@@ -3,7 +3,6 @@ import os
 import asyncio
 # import concurrent.futures
 from multiprocessing import Process
-import manifold_arkpoint
 from rac_bot import bot
 import nationstates_main
 from ballsdex_hash import hash_balldex_images
@@ -25,9 +24,7 @@ demo = gr.Interface(fn=greet, inputs="text", outputs="text")
 tasks = []
 # tasks.append(Process(target=hash_balldex_images))
 tasks.append(Process(target=bot.run, args=(os.getenv('BOT_TOKEN'),)))
-# tasks.append(Process(target=manifold_arkpoint.bet_stock_markets, args=()))
 tasks.append(Process(target=asyncio.run, args=(nationstates_main.run_all_tasks(),)))
-# bet_users = Process(target=asyncio.run, args=(manifold_arkpoint.bet_users(),))
 tasks.append(Process(target=demo.launch))
 
 for task in tasks:
