@@ -1,0 +1,9 @@
+aiohttp
+nextcord
+motor
+thefuzz
+pillow
+python-dotenv
+markdownify
+aiosqlite
+ImageHash
