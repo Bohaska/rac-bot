@@ -24,7 +24,7 @@ demo = gr.Interface(fn=greet, inputs="text", outputs="text")
 tasks = []
 # tasks.append(Process(target=hash_balldex_images))
 tasks.append(Process(target=bot.run, args=(os.getenv('BOT_TOKEN'),)))
-tasks.append(Process(target=asyncio.run, args=(nationstates_main.run_all_tasks(),)))
+# tasks.append(Process(target=asyncio.run, args=(nationstates_main.run_all_tasks(),)))
 tasks.append(Process(target=demo.launch))
 
 for task in tasks:
