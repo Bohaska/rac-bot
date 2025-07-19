@@ -21,11 +21,14 @@ def greet(name):
 
 demo = gr.Interface(fn=greet, inputs="text", outputs="text")
 
+def launch_gradio_app():
+    demo.launch(server_name="0.0.0.0", server_port=7860) 
+
 tasks = []
 # tasks.append(Process(target=hash_balldex_images))
 tasks.append(Process(target=bot.run, args=(os.getenv('BOT_TOKEN'),)))
 # tasks.append(Process(target=asyncio.run, args=(nationstates_main.run_all_tasks(),)))
-tasks.append(Process(target=demo.launch))
+tasks.append(Process(target=launch_gradio_app))
 
 for task in tasks:
     task.start()
