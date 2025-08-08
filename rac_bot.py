@@ -94,7 +94,7 @@ def get_rac_time(now_time=None):
     # Special case: RAC year 4092 is from July 1 to July 27
     rac_year_start = datetime(4092, 1, 1, tzinfo=timezone.utc)
     total_seconds = (now_time - RAC_4092_START).total_seconds()
-    fraction = total_seconds / (27 * 24 * 60 * 60)  # 27 days in RAC year 4092
+    fraction = total_seconds / (27 * 24 * 60 * 60) # 27 days in RAC year 4092
 
     days_in_year = 366 if is_leap_year(rac_year_start) else 365
     return rac_year_start + timedelta(days=fraction * days_in_year)
