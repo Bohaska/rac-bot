@@ -61,80 +61,109 @@ USER_AGENTS = [
 
 db_client = AsyncIOMotorClient(uri)
 
+# Transition at midnight UTC between July 27 and July 28, 2025
+RAC_TRANSITION_DATETIME = datetime(2025, 7, 28, 0, 0, 0, tzinfo=timezone.utc)
+
+# Special case start for RAC year 4092
+RAC_4092_START = datetime(2025, 7, 1, 0, 0, 0, tzinfo=timezone.utc)
+RAC_4092_END = datetime(2025, 7, 28, 0, 0, 0, tzinfo=timezone.utc)
 
 def is_leap_year(date_time):
     return not date_time.year % 400 or not date_time.year % 4 and date_time.year % 100
 
 
 def get_rac_time(now_time=None):
-    if not now_time:
-        now_time = datetime.now(timezone.utc)
-    # if now_time < datetime(2024, 5, 1, tzinfo=timezone.utc)
-    if True:
-        """One RAC year every month"""
-        rac_year = (now_time.year - 2023) * 12 + 4061 + now_time.month
-        rac_year = datetime(rac_year, 1, 1, tzinfo=timezone.utc)
-        if is_leap_year(now_time):
-            """A leap year"""
-            """month_to_day index represents the month, the value represents the number of days past."""
-            month_to_day = [None, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    if not now_time:
+        now_time = datetime.now(timezone.utc)
 
-        else:
-            """Not a leap year"""
-            month_to_day = [None, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-        if is_leap_year(rac_year):
-            days_in_year = 366
-        else:
-            days_in_year = 365
-        hours = now_time.hour + (now_time.minute / 60) + (now_time.second / 3600)
-        rac_days = ((((now_time.day - 1) * 24) + hours) / (month_to_day[now_time.month] * 24)) * days_in_year
-        delta = timedelta(rac_days)
-        rac_date = rac_year + delta
-        return rac_date
-    else:
-        """One RAC year every half a month (they'll regret it)"""
-        rac_year = (now_time.year - 2024) * 12 * 2 + 4078 + now_time.month * 2 - 10
-        rac_year = datetime(rac_year, 1, 1, tzinfo=timezone.utc)
-        if is_leap_year(now_time):
-            """A leap year"""
-            """month_to_day index represents the month, the value represents the number of days past."""
-            month_to_day = [0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-        else:
-            """Not a leap year"""
-            month_to_day = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-        if is_leap_year(rac_year):
-            days_in_year = 366
-        else:
-            days_in_year = 365
-        hours = now_time.hour + (now_time.minute / 60) + (now_time.second / 3600)
-        rac_days = ((((now_time.day - 1) * 24) + hours) / (month_to_day[now_time.month] * 24)) * days_in_year
-        delta = timedelta(rac_days * 2)
-        rac_date = rac_year + delta
-        return rac_date
+    if now_time < RAC_4092_START:
+        # Legacy: 1 RAC year per month
+        rac_year = (now_time.year - 2023) * 12 + 4061 + now_time.month
+        rac_year_start = datetime(rac_year, 1, 1, tzinfo=timezone.utc)
+
+        month_to_day = [None, 31, 29 if is_leap_year(now_time) else 28, 31, 30, 31,
+                        30, 31, 31, 30, 31, 30, 31]
+        days_in_year = 366 if is_leap_year(rac_year_start) else 365
+
+        hours = now_time.hour + now_time.minute / 60 + now_time.second / 3600
+        rac_days = ((((now_time.day - 1) * 24) + hours) / (month_to_day[now_time.month] * 24)) * days_in_year
+
+        return rac_year_start + timedelta(days=rac_days)
+
+    elif now_time < RAC_TRANSITION_DATETIME:
+        # Special case: RAC year 4092 is from July 1 to July 27
+        rac_year_start = datetime(4092, 1, 1, tzinfo=timezone.utc)
+        total_seconds = (now_time - RAC_4092_START).total_seconds()
+        fraction = total_seconds / (27 * 24 * 60 * 60)  # 27 days in RAC year 4092
+
+        days_in_year = 366 if is_leap_year(rac_year_start) else 365
+        return rac_year_start + timedelta(days=fraction * days_in_year)
+
+    else:
+        # New system: 1 RAC year every 2 weeks (14 days)
+        base_rac_year = 4093
+        base_irl = RAC_TRANSITION_DATETIME
+
+        delta_days = (now_time - base_irl).days
+        extra_seconds = (now_time - base_irl).seconds
+
+        rac_years_passed = delta_days // 14
+        remainder_days = (delta_days % 14) + (extra_seconds / (24 * 60 * 60))
+        rac_year = base_rac_year + rac_years_passed
+        rac_year_start = datetime(rac_year, 1, 1, tzinfo=timezone.utc)
+
+        days_in_year = 366 if is_leap_year(rac_year_start) else 365
+        rac_days = (remainder_days / 14) * days_in_year
+
+        return rac_year_start + timedelta(days=rac_days)
 
 
 def get_irl_time(rac_time: datetime):
-    if True:
-        irl_year = math.floor((rac_time.year - 6) / 12) + 1685
-        irl_month = (rac_time.year - 5) % 12
-        if irl_month == 0:
-            irl_month = 12
-        time_passed = rac_time - datetime(rac_time.year, 1, 1, tzinfo=timezone.utc)
-        if not irl_year % 400 or not irl_year % 4 and irl_year % 100:
-            """A leap year"""
-            """month_to_day index represents the month, the value represents the number of days past."""
-            month_to_day = [0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-            percentage = time_passed / timedelta(days=366)
-        else:
-            """Not a leap year"""
-            month_to_day = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-            percentage = time_passed / timedelta(days=365)
-        delta_days = percentage * month_to_day[irl_month]
-        month_fraction = timedelta(days=delta_days)
-        irl_date = datetime(year=irl_year, month=irl_month, day=1, tzinfo=timezone.utc) + month_fraction
-        return irl_date
-    else:
-        irl_year = math.floor((rac_time.year - 6) / 12) + 1685
+    if rac_time.year < 4092:
+        # Legacy: 1 RAC year per month
+        irl_year = math.floor((rac_time.year - 4061) / 12) + 2023
+        irl_month = (rac_time.year - 4061) % 12
+        if irl_month == 0:
+            irl_month = 12
+            irl_year -= 1
+
+        base = datetime(rac_time.year, 1, 1, tzinfo=timezone.utc)
+        days_passed = (rac_time - base).total_seconds()
+
+        month_to_day = [0, 31, 29 if is_leap_year(datetime(irl_year, 1, 1)) else 28, 31, 30, 31,
+                        30, 31, 31, 30, 31, 30, 31]
+        days_in_month = month_to_day[irl_month]
+        days_in_year = 366 if is_leap_year(base) else 365
+
+        percentage = days_passed / (days_in_year * 24 * 3600)
+        delta = timedelta(days=percentage * days_in_month)
+
+        return datetime(irl_year, irl_month, 1, tzinfo=timezone.utc) + delta
+
+    elif rac_time.year == 4092:
+        # Special RAC year 4092: map July 1–27
+        base = datetime(4092, 1, 1, tzinfo=timezone.utc)
+        days_passed = (rac_time - base).total_seconds()
+        days_in_year = 366 if is_leap_year(base) else 365
+
+        percentage = days_passed / (days_in_year * 24 * 3600)
+        delta = timedelta(days=percentage * 27)
+
+        return RAC_4092_START + delta
+
+    else:
+        # New system: 1 RAC year every 14 days starting from 2025-07-28
+        base_rac_year = 4093
+        base_irl = RAC_TRANSITION_DATETIME
+
+        rac_years_passed = rac_time.year - base_rac_year
+        base_rac_start = datetime(rac_time.year, 1, 1, tzinfo=timezone.utc)
+        days_in_year = 366 if is_leap_year(base_rac_start) else 365
+
+        fraction = (rac_time - base_rac_start).total_seconds() / (days_in_year * 24 * 3600)
+        irl_offset = timedelta(days=(rac_years_passed * 14) + fraction * 14)
+
+        return base_irl + irl_offset
 
 
 def format_time(date_time, am_pm, prettyprint):
