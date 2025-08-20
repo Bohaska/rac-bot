@@ -27,6 +27,7 @@ from better_view import AutoDisableView
 import json
 from ballsdex_hash import check_balldex_image
 import soccer
+from google import genai
 
 
 load_dotenv()
@@ -518,7 +519,7 @@ async def pangram_ai_csrf_token(session_id):
 
 
 async def pangram_detection_api(input_text, session_id, csrf_token):
-    cookies = {
+    """cookies = {
         'sessionid': session_id,
     }
 
@@ -551,7 +552,8 @@ async def pangram_detection_api(input_text, session_id, csrf_token):
     async with session:
         resp = await session.post('https://web.pangram.com/api/classify-text-sliding-window/', cookies=cookies, headers=headers, json=json_data)
     resp = await resp.json(content_type=None)
-    return resp
+    return resp"""
+    return None
 
 
 async def pangram_detect_ai_text(input_text):
@@ -665,6 +667,103 @@ async def message(interaction: Interaction, message: Message):
         await interaction.followup.send(content=followup_text, allowed_mentions=AllowedMentions.none())
     except JSONDecodeError:
         await interaction.followup.send(content="The AI text detection server failed to respond.")
+
+
+async def ai_summarize(messages, prompt):
+    contents = """SYSTEM:
+    You are an assistant that extracts ONLY the *nation-roleplay–relevant* information from a flood of mixed Discord messages.  
+    Your goal is to give players a quick, neutral, third-person digest of the latest in-character developments while ignoring memes, emojis, small-talk, images, music links, and any other chatter that does not advance the RP.
+
+    RULES
+    1. Relevant content = diplomacy, wars, treaties, trades, in-character speeches, law passages, map claims, economic stats, event scheduling **if** it affects the story.  
+    2. Irrelevant content = jokes, memes, GIFs, “brb,” voice-chat coordination, tech support, real-life news, and anything explicitly labelled “OOC.” Discard it entirely.  
+    3. Preserve factual accuracy; do *not* invent details.  
+    4. Shorten repetitive statements; keep one clear mention.  
+    5. Use neutral, narrator-style language (no first person).  
+    6. When dates, places, or factions are mentioned, include them. 
+    7. Message creation times are in UTC.
+    <conversation>
+    """
+    for message in messages:
+        contents += f"{message.author.display_name} ({message.jump_url}) {message.created_at.strftime('%Y-%m-%d %H:%M')}:\n{message.clean_content}\n\n"
+    contents += "\n</conversation>"
+    if prompt:
+        contents += f"\nAdditional instructions: {prompt}"
+
+    try:
+        client = genai.Client()
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=contents
+        )
+        return response.text
+    except Exception as e:
+        return f"An error occurred while summarizing the thread: {e}"
+
+@bot.slash_command(
+    description="Summarize messages in a thread or channel.",
+    force_global=True
+)
+async def summarize(interaction: Interaction):
+    pass
+
+
+@summarize.subcommand(description="Summarize messages in a channel.")
+async def channel(
+    interaction: Interaction,
+    limit: int = SlashOption(
+        description="The number of messages to summarize.",
+        required=True,
+        min_value=50,
+        max_value=10000
+    ),
+    prompt: str = SlashOption(
+        description="Optional text to add to the summarization prompt.",
+        required=False,
+        default=""
+    )
+):
+    await interaction.response.defer()
+    if not os.getenv("GEMINI_API_KEY"):
+        await interaction.followup.send("The `GEMINI_API_KEY` environment variable is not set. Please set it to use this command.")
+        return
+
+    messages = await interaction.channel.history(limit=limit).flatten()
+    messages.reverse()
+
+    summary = ai_summarize(messages, prompt)
+    await interaction.followup.send(summary)
+
+
+@summarize.subcommand(description="Summarize messages in a thread.")
+async def thread(
+    interaction: Interaction,
+    limit: int = SlashOption(
+        description="The number of messages to summarize.",
+        required=True,
+        min_value=50,
+        max_value=10000
+    ),
+    prompt: str = SlashOption(
+        description="Optional text to add to the summarization prompt.",
+        required=False,
+        default=""
+    )
+):
+    await interaction.response.defer()
+    if not isinstance(interaction.channel, nextcord.Thread):
+        await interaction.followup.send("This command can only be used in a thread.")
+        return
+
+    if not os.getenv("GEMINI_API_KEY"):
+        await interaction.followup.send("The `GEMINI_API_KEY` environment variable is not set. Please set it to use this command.")
+        return
+
+    messages = await interaction.channel.history(limit=limit).flatten()
+    messages.reverse()
+
+    summary = ai_summarize(messages, prompt)
+    await interaction.followup.send(summary)
 
 
 @bot.event
