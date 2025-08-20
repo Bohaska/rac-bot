@@ -700,6 +700,15 @@ async def ai_summarize(messages, prompt):
     except Exception as e:
         return f"An error occurred while summarizing the thread: {e}"
 
+
+async def send_long_message(interaction, text):
+    if len(text) <= 2000:
+        await interaction.followup.send(text)
+    else:
+        chunks = [text[i:i + 2000] for i in range(0, len(text), 2000)]
+        for chunk in chunks:
+            await interaction.followup.send(chunk)
+
 @bot.slash_command(
     description="Summarize messages in a thread or channel.",
     force_global=True
@@ -728,11 +737,11 @@ async def channel(
         await interaction.followup.send("The `GEMINI_API_KEY` environment variable is not set. Please set it to use this command.")
         return
 
-    messages = await interaction.channel.history(limit=limit).flatten()
+    messages = [message async for message in interaction.channel.history(limit=limit)]
     messages.reverse()
 
-    summary = ai_summarize(messages, prompt)
-    await interaction.followup.send(summary)
+    summary = await ai_summarize(messages, prompt)
+    await send_long_message(interaction, summary)
 
 
 @summarize.subcommand(description="Summarize messages in a thread.")
@@ -759,11 +768,11 @@ async def thread(
         await interaction.followup.send("The `GEMINI_API_KEY` environment variable is not set. Please set it to use this command.")
         return
 
-    messages = await interaction.channel.history(limit=limit).flatten()
+    messages = [message async for message in interaction.channel.history(limit=limit)]
     messages.reverse()
 
-    summary = ai_summarize(messages, prompt)
-    await interaction.followup.send(summary)
+    summary = await ai_summarize(messages, prompt)
+    await send_long_message(interaction, summary)
 
 
 @bot.event
