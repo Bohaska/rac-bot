@@ -28,7 +28,7 @@ import json
 from ballsdex_hash import check_balldex_image
 import soccer
 from google import genai
-
+from google.genai.errors import APIError
 
 load_dotenv()
 RAC_SERVER_ID = 793104002224488481
@@ -669,7 +669,7 @@ async def message(interaction: Interaction, message: Message):
         await interaction.followup.send(content="The AI text detection server failed to respond.")
 
 
-async def ai_summarize(messages, prompt):
+async def ai_summarize(messages, prompt, status_message):
     contents = """SYSTEM:
     You are an assistant that extracts ONLY the *nation-roleplay–relevant* information from a flood of mixed Discord messages.  
     Your goal is to give players a quick, neutral, third-person digest of the latest in-character developments while ignoring memes, emojis, small-talk, and any other chatter that does not advance the RP.
@@ -697,11 +697,26 @@ async def ai_summarize(messages, prompt):
 
     try:
         client = genai.Client()
+        # First attempt with gemini-2.5-flash
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=contents
         )
         return response.text
+    except APIError as e:
+        # Check if the error is a 429 RESOURCE_EXHAUSTED
+        if e.code == 429:
+            try:
+                await status_message.edit(content="Quota exceeded for gemini-2.5-flash. Retrying with gemini-2.0-flash...")
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=contents
+                )
+                return response.text
+            except Exception as retry_e:
+                return f"An error occurred during retry with gemini-2.0-flash: {retry_e}"
+        else:
+            return f"An API error occurred: {e}"
     except Exception as e:
         return f"An error occurred while summarizing the thread: {e}"
 
@@ -749,7 +764,7 @@ async def channel(
 
     await status_message.edit(content="Calling AI to summarize...")
 
-    summary = await ai_summarize(messages, prompt)
+    summary = await ai_summarize(messages, prompt, status_message)
     await status_message.delete()
     await send_long_message(interaction, summary)
 
@@ -785,7 +800,7 @@ async def thread(
 
     await status_message.edit(content="Calling AI to summarize...")
 
-    summary = await ai_summarize(messages, prompt)
+    summary = await ai_summarize(messages, prompt, status_message)
     await status_message.delete()
     await send_long_message(interaction, summary)
 
