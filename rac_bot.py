@@ -672,7 +672,7 @@ async def message(interaction: Interaction, message: Message):
 async def ai_summarize(messages, prompt):
     contents = """SYSTEM:
     You are an assistant that extracts ONLY the *nation-roleplay–relevant* information from a flood of mixed Discord messages.  
-    Your goal is to give players a quick, neutral, third-person digest of the latest in-character developments while ignoring memes, emojis, small-talk, images, music links, and any other chatter that does not advance the RP.
+    Your goal is to give players a quick, neutral, third-person digest of the latest in-character developments while ignoring memes, emojis, small-talk, and any other chatter that does not advance the RP.
 
     RULES
     1. Relevant content = diplomacy, wars, treaties, trades, in-character speeches, law passages, map claims, economic stats, event scheduling **if** it affects the story.  
@@ -682,10 +682,15 @@ async def ai_summarize(messages, prompt):
     5. Use neutral, narrator-style language (no first person).  
     6. When dates, places, or factions are mentioned, include them. 
     7. Message creation times are in UTC.
+    8. Feel free to use Markdown in your response.
+    9. Link to Discord messages when you use their information in your response. Use Markdown formatting for your links.
     <conversation>
     """
     for message in messages:
-        contents += f"{message.author.display_name} ({message.jump_url}) {message.created_at.strftime('%Y-%m-%d %H:%M')}:\n{message.clean_content}\n\n"
+        contents += f"{message.author.display_name} ({message.jump_url})  {message.created_at.strftime('%Y-%m-%d %H:%M')}:"
+        if message.reference is not None:
+            contents += f'\n*Replying to {message.reference.jump_url}*'
+        contents += f"\n    {message.clean_content}\n\n"
     contents += "\n</conversation>"
     if prompt:
         contents += f"\nAdditional instructions: {prompt}"
@@ -737,10 +742,15 @@ async def channel(
         await interaction.followup.send("The `GEMINI_API_KEY` environment variable is not set. Please set it to use this command.")
         return
 
+    status_message = await interaction.followup.send("Fetching messages in channel...", wait=True)
+
     messages = [message async for message in interaction.channel.history(limit=limit)]
     messages.reverse()
 
+    await status_message.edit(content="Calling AI to summarize...")
+
     summary = await ai_summarize(messages, prompt)
+    await status_message.delete()
     await send_long_message(interaction, summary)
 
 
@@ -768,10 +778,15 @@ async def thread(
         await interaction.followup.send("The `GEMINI_API_KEY` environment variable is not set. Please set it to use this command.")
         return
 
+    status_message = await interaction.followup.send("Fetching messages in channel...", wait=True)
+
     messages = [message async for message in interaction.channel.history(limit=limit)]
     messages.reverse()
 
+    await status_message.edit(content="Calling AI to summarize...")
+
     summary = await ai_summarize(messages, prompt)
+    await status_message.delete()
     await send_long_message(interaction, summary)
 
 
