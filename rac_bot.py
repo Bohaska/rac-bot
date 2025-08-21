@@ -725,9 +725,16 @@ async def send_long_message(interaction, text):
     if len(text) <= 2000:
         await interaction.followup.send(text)
     else:
-        chunks = [text[i:i + 2000] for i in range(0, len(text), 2000)]
-        for chunk in chunks:
-            await interaction.followup.send(chunk)
+        text_lines = text.split("\n")
+        current_message = ""
+        for num, line in enumerate(text_lines):
+            if len(current_message + "\n" + line) > 2000:
+                await interaction.followup.send(current_message.strip())
+                current_message = line
+            else:
+                current_message += "\n" + line
+        if current_message.strip():
+            await interaction.followup.send(current_message.strip())
 
 @bot.slash_command(
     description="Summarize messages in a thread or channel.",
