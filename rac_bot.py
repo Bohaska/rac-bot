@@ -683,7 +683,7 @@ async def ai_summarize(messages, prompt, status_message):
     6. When dates, places, or factions are mentioned, include them. 
     7. Message creation times are in UTC.
     8. Feel free to use Markdown in your response.
-    9. Link to Discord messages when you use their information in your response. Use Markdown formatting for your links.
+    9. Link to Discord messages when you use their information in your response. If you use multiple messages in succession, you can simply link to the oldest message in the sequence. Use Markdown formatting for your links.
     <conversation>
     """
     for message in messages:
