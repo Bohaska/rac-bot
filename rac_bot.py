@@ -669,21 +669,193 @@ async def message(interaction: Interaction, message: Message):
         await interaction.followup.send(content="The AI text detection server failed to respond.")
 
 
-async def ai_summarize(messages, prompt, status_message):
-    contents = """SYSTEM:
-    You are an assistant that extracts ONLY the *nation-roleplay–relevant* information from a flood of mixed Discord messages.  
-    Your goal is to give players a quick, neutral, third-person digest of the latest in-character developments while ignoring memes, emojis, small-talk, and any other chatter that does not advance the RP.
+@bot.slash_command(
+    description="Manage summarization prompts.",
+    force_global=True
+)
+async def prompt(interaction: Interaction):
+    pass
 
-    RULES
-    1. Relevant content = diplomacy, wars, treaties, trades, in-character speeches, law passages, map claims, economic stats, event scheduling **if** it affects the story.  
-    2. Irrelevant content = jokes, memes, GIFs, “brb,” voice-chat coordination, tech support, real-life news, and anything explicitly labelled “OOC.” Discard it entirely.  
-    3. Preserve factual accuracy; do *not* invent details.  
-    4. Shorten repetitive statements; keep one clear mention.  
-    5. Use neutral, narrator-style language (no first person).  
-    6. When dates, places, or factions are mentioned, include them. 
-    7. Message creation times are in UTC.
-    8. Feel free to use Markdown in your response.
-    9. Link to Discord messages when you use their information in your response. If you use multiple messages in succession, you can simply link to the oldest message in the sequence. Use Markdown formatting for your links.
+
+@bot.slash_command(
+    description="Manage summarization prompts.",
+    force_global=True
+)
+async def summarize(interaction: Interaction):
+    pass
+
+
+async def is_admin_or_owner(interaction: Interaction) -> bool:
+    """Check if the user is the bot owner or an admin in the RAC server."""
+    if interaction.user.id == OWNER_ID:
+        return True
+    rac_guild = bot.get_guild(RAC_SERVER_ID)
+    if rac_guild:
+        member = rac_guild.get_member(interaction.user.id)
+        if member and member.guild_permissions.manage_guild:
+            return True
+    return False
+
+
+async def prompt_autocomplete(interaction: Interaction, prompt_title: str):
+    """Autocomplete for prompt titles."""
+    db = db_client.rac_prompts
+    collection = db.prompts
+    prompts = []
+    query = {"_id": {"$regex": f"^{re.escape(prompt_title)}", "$options": "i"}} if prompt_title else {}
+    async for entry in collection.find(query, ["_id"]).limit(25):
+        prompts.append(entry["_id"])
+    await interaction.response.send_autocomplete(prompts)
+
+
+@prompt.subcommand(description="Add a new summarization prompt.")
+async def add(
+        interaction: Interaction,
+        title: str = SlashOption(
+            description="A unique title for your new prompt.",
+            required=True
+        ),
+        message_link: str = SlashOption(
+            description="A Discord message link containing the prompt text.",
+            required=True
+        )
+):
+    await interaction.response.defer()
+    db = db_client.rac_prompts
+    collection = db.prompts
+    if await collection.find_one({"_id": title}):
+        await interaction.followup.send(
+            f"A prompt with the title '{title}' already exists. Please choose a unique title.")
+        return
+
+    try:
+        prompt_message = await get_message_from_link(message_link)
+        prompt_content = prompt_message.content
+    except (ValueError, errors.NotFound) as e:
+        await interaction.followup.send(f"Failed to fetch message content: {e}")
+        return
+
+    new_prompt = {
+        "_id": title,
+        "content": prompt_content,
+        "creator_id": interaction.user.id
+    }
+    await collection.insert_one(new_prompt)
+    await interaction.followup.send(f"Successfully added the prompt '{title}'.")
+
+
+@prompt.subcommand(description="Edit an existing prompt.")
+async def edit(
+        interaction: Interaction,
+        title: str = SlashOption(
+            description="The title of the prompt to edit.",
+            required=True,
+            autocomplete_callback=prompt_autocomplete
+        ),
+        new_message_link: str = SlashOption(
+            description="The new Discord message link for the prompt's content.",
+            required=True
+        )
+):
+    await interaction.response.defer()
+    db = db_client.rac_prompts
+    collection = db.prompts
+    existing_prompt = await collection.find_one({"_id": title})
+
+    if not existing_prompt:
+        await interaction.followup.send(f"No prompt found with the title '{title}'.")
+        return
+
+    is_admin = await is_admin_or_owner(interaction)
+    if existing_prompt["creator_id"] != interaction.user.id and not is_admin:
+        await interaction.followup.send("You can only edit prompts that you have created.")
+        return
+
+    try:
+        new_prompt_message = await get_message_from_link(new_message_link)
+        new_content = new_prompt_message.content
+    except (ValueError, errors.NotFound) as e:
+        await interaction.followup.send(f"Failed to fetch new message content: {e}")
+        return
+
+    await collection.update_one({"_id": title}, {"$set": {"content": new_content}})
+    await interaction.followup.send(f"Successfully updated the prompt '{title}'.")
+
+
+@prompt.subcommand(description="Delete a prompt.")
+async def delete(
+        interaction: Interaction,
+        title: str = SlashOption(
+            description="The title of the prompt to delete.",
+            required=True,
+            autocomplete_callback=prompt_autocomplete
+        )
+):
+    await interaction.response.defer()
+    db = db_client.rac_prompts
+    collection = db.prompts
+    existing_prompt = await collection.find_one({"_id": title})
+
+    if not existing_prompt:
+        await interaction.followup.send(f"No prompt found with the title '{title}'.")
+        return
+
+    is_admin = await is_admin_or_owner(interaction)
+    if existing_prompt["creator_id"] != interaction.user.id and not is_admin:
+        await interaction.followup.send("You can only delete prompts that you have created.")
+        return
+
+    await collection.delete_one({"_id": title})
+    await interaction.followup.send(f"Successfully deleted the prompt '{title}'.")
+
+
+@prompt.subcommand(description="Set the global default prompt for summarization.")
+async def set_default(
+        interaction: Interaction,
+        message_link: str = SlashOption(
+            description="A Discord message link containing the default prompt text.",
+            required=True
+        )
+):
+    await interaction.response.defer()
+    if not await is_admin_or_owner(interaction):
+        await interaction.followup.send("You do not have permission to set the default prompt.")
+        return
+
+    try:
+        prompt_message = await get_message_from_link(message_link)
+        prompt_content = prompt_message.content
+    except (ValueError, errors.NotFound) as e:
+        await interaction.followup.send(f"Failed to fetch message content: {e}")
+        return
+
+    db = db_client.rac_prompts
+    collection = db.prompts
+    await collection.update_one(
+        {"_id": "default_prompt"},
+        {"$set": {"content": prompt_content, "creator_id": interaction.user.id}},
+        upsert=True
+    )
+    await interaction.followup.send("Successfully updated the default summarization prompt.")
+
+
+async def ai_summarize(messages, prompt_title, status_message):
+    db = db_client.rac_prompts
+    collection = db.prompts
+
+    if prompt_title:
+        prompt_doc = await collection.find_one({"_id": prompt_title})
+        if prompt_doc:
+            system_prompt = prompt_doc["content"]
+        else:
+            # Fallback to default if the provided title is invalid
+            prompt_doc = await collection.find_one({"_id": "default_prompt"})
+            system_prompt = prompt_doc["content"] if prompt_doc else "You are a helpful assistant."
+    else:
+        prompt_doc = await collection.find_one({"_id": "default_prompt"})
+        system_prompt = prompt_doc["content"] if prompt_doc else "You are a helpful assistant."
+
+    contents = f"""{system_prompt}
     <conversation>
     """
     for message in messages:
@@ -692,8 +864,6 @@ async def ai_summarize(messages, prompt, status_message):
             contents += f'\n*Replying to {message.reference.jump_url}*'
         contents += f"\n    {message.clean_content}\n\n"
     contents += "\n</conversation>"
-    if prompt:
-        contents += f"\nAdditional instructions: {prompt}"
 
     try:
         client = genai.Client()
@@ -707,7 +877,8 @@ async def ai_summarize(messages, prompt, status_message):
         # Check if the error is a 429 RESOURCE_EXHAUSTED
         if e.code == 429:
             try:
-                await status_message.edit(content="Quota exceeded for gemini-2.5-flash. Retrying with gemini-2.0-flash...")
+                await status_message.edit(
+                    content="Quota exceeded for gemini-2.5-flash. Retrying with gemini-2.0-flash...")
                 response = client.models.generate_content(
                     model="gemini-2.0-flash",
                     contents=contents
@@ -721,47 +892,26 @@ async def ai_summarize(messages, prompt, status_message):
         return f"An error occurred while summarizing the thread: {e}"
 
 
-async def send_long_message(interaction, text):
-    if len(text) <= 2000:
-        await interaction.followup.send(text)
-    else:
-        text_lines = text.split("\n")
-        current_message = ""
-        for num, line in enumerate(text_lines):
-            if len(current_message + "\n" + line) > 2000:
-                await interaction.followup.send(current_message.strip())
-                current_message = line
-            else:
-                current_message += "\n" + line
-        if current_message.strip():
-            await interaction.followup.send(current_message.strip())
-
-@bot.slash_command(
-    description="Summarize messages in a thread or channel.",
-    force_global=True
-)
-async def summarize(interaction: Interaction):
-    pass
-
-
 @summarize.subcommand(description="Summarize messages in a channel.")
 async def channel(
-    interaction: Interaction,
-    limit: int = SlashOption(
-        description="The number of messages to summarize.",
-        required=True,
-        min_value=50,
-        max_value=10000
-    ),
-    prompt: str = SlashOption(
-        description="Optional text to add to the summarization prompt.",
-        required=False,
-        default=""
-    )
+        interaction: Interaction,
+        limit: int = SlashOption(
+            description="The number of messages to summarize.",
+            required=True,
+            min_value=50,
+            max_value=10000
+        ),
+        prompt_title: str = SlashOption(
+            description="The title of the prompt to use for summarization.",
+            required=False,
+            default=None,
+            autocomplete_callback=prompt_autocomplete
+        )
 ):
     await interaction.response.defer()
     if not os.getenv("GEMINI_API_KEY"):
-        await interaction.followup.send("The `GEMINI_API_KEY` environment variable is not set. Please set it to use this command.")
+        await interaction.followup.send(
+            "The `GEMINI_API_KEY` environment variable is not set. Please set it to use this command.")
         return
 
     status_message = await interaction.followup.send("Fetching messages in channel...", wait=True)
@@ -771,25 +921,27 @@ async def channel(
 
     await status_message.edit(content="Calling AI to summarize...")
 
-    summary = await ai_summarize(messages, prompt, status_message)
+    summary = await ai_summarize(messages, prompt_title, status_message)
     await status_message.delete()
     await send_long_message(interaction, summary)
 
 
 @summarize.subcommand(description="Summarize messages in a thread.")
 async def thread(
-    interaction: Interaction,
-    limit: int = SlashOption(
-        description="The number of messages to summarize.",
-        required=True,
-        min_value=50,
-        max_value=10000
-    ),
-    prompt: str = SlashOption(
-        description="Optional text to add to the summarization prompt.",
-        required=False,
-        default=""
-    )
+        interaction: Interaction,
+        limit: int = SlashOption(
+            description="The number of messages to summarize. Default: 100.",
+            required=False,
+            default=100,
+            min_value=50,
+            max_value=10000,
+        ),
+        prompt_title: str = SlashOption(
+            description="The title of the prompt to use for summarization.",
+            required=False,
+            default=None,
+            autocomplete_callback=prompt_autocomplete
+        )
 ):
     await interaction.response.defer()
     if not isinstance(interaction.channel, nextcord.Thread):
@@ -797,7 +949,8 @@ async def thread(
         return
 
     if not os.getenv("GEMINI_API_KEY"):
-        await interaction.followup.send("The `GEMINI_API_KEY` environment variable is not set. Please set it to use this command.")
+        await interaction.followup.send(
+            "The `GEMINI_API_KEY` environment variable is not set. Please set it to use this command.")
         return
 
     status_message = await interaction.followup.send("Fetching messages in channel...", wait=True)
@@ -807,7 +960,7 @@ async def thread(
 
     await status_message.edit(content="Calling AI to summarize...")
 
-    summary = await ai_summarize(messages, prompt, status_message)
+    summary = await ai_summarize(messages, prompt_title, status_message)
     await status_message.delete()
     await send_long_message(interaction, summary)
 
