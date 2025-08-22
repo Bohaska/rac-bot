@@ -708,6 +708,22 @@ async def prompt_autocomplete(interaction: Interaction, prompt_title: str):
     await interaction.response.send_autocomplete(prompts)
 
 
+async def send_long_message(interaction, text):
+    if len(text) <= 2000:
+        await interaction.followup.send(text)
+    else:
+        text_lines = text.split("\n")
+        current_message = ""
+        for num, line in enumerate(text_lines):
+            if len(current_message + "\n" + line) > 2000:
+                await interaction.followup.send(current_message.strip())
+                current_message = line
+            else:
+                current_message += "\n" + line
+        if current_message.strip():
+            await interaction.followup.send(current_message.strip())
+
+
 @prompt.subcommand(description="Add a new summarization prompt.")
 async def add(
         interaction: Interaction,
@@ -895,9 +911,16 @@ async def ai_summarize(messages, prompt_title, status_message):
 @summarize.subcommand(description="Summarize messages in a channel.")
 async def channel(
         interaction: Interaction,
+        summarize_channel: nextcord.TextChannel = SlashOption(
+            name="channel",
+            description="The channel to summarize",
+            required=False,
+            default=None,
+        ),
         limit: int = SlashOption(
-            description="The number of messages to summarize.",
-            required=True,
+            description="The number of messages to summarize. Default: 100",
+            required=False,
+            default=100,
             min_value=50,
             max_value=10000
         ),
@@ -914,9 +937,12 @@ async def channel(
             "The `GEMINI_API_KEY` environment variable is not set. Please set it to use this command.")
         return
 
+    if summarize_channel is None:
+        summarize_channel = interaction.channel
+
     status_message = await interaction.followup.send("Fetching messages in channel...", wait=True)
 
-    messages = [message async for message in interaction.channel.history(limit=limit)]
+    messages = [message async for message in summarize_channel.history(limit=limit)]
     messages.reverse()
 
     await status_message.edit(content="Calling AI to summarize...")
