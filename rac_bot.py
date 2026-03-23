@@ -702,7 +702,7 @@ async def ai_summarize(messages, prompt_title, status_message):
         client = genai.Client()
         # First attempt with gemini-2.5-flash
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.1-flash-lite-preview",
             contents=contents
         )
         return response.text
@@ -711,9 +711,9 @@ async def ai_summarize(messages, prompt_title, status_message):
         if e.code == 429:
             try:
                 await status_message.edit(
-                    content="Quota exceeded for gemini-2.5-flash. Retrying with gemini-2.0-flash...")
+                    content="Quota exceeded for gemini-3.1-flash-lite-preview. Retrying with gemini-3-flash-preview...")
                 response = client.models.generate_content(
-                    model="gemini-2.0-flash",
+                    model="gemini-3-flash-preview",
                     contents=contents
                 )
                 return response.text
