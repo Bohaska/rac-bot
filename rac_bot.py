@@ -5,6 +5,7 @@ from nextcord import Interaction, SlashOption, Intents, Message, ButtonStyle, Em
 from nextcord.ext import commands
 from nextcord.ui import View, Button, TextInput, Modal
 import logging
+import traceback
 from datetime import datetime, timezone, timedelta
 from json.decoder import JSONDecodeError
 
@@ -245,6 +246,37 @@ async def get_message_from_link(message_link):
 
 
 bot = commands.Bot(intents=Intents(guilds=True, members=True, message_content=True, messages=True))
+
+
+@bot.event
+async def on_application_command_error(interaction: Interaction, error):
+    """Report slash-command failures without bringing down the bot."""
+    original_error = getattr(error, "original", error)
+    command = getattr(interaction, "application_command", None)
+    command_name = getattr(command, "qualified_name", "unknown")
+    stack_trace = "".join(traceback.format_exception(
+        type(original_error), original_error, original_error.__traceback__
+    ))
+
+    # Discord limits an embed description to 4096 characters.
+    if len(stack_trace) > 3900:
+        stack_trace = "...<truncated>...\n" + stack_trace[-3880:]
+
+    logging.error("Error in /%s:\n%s", command_name, stack_trace)
+    error_embed = Embed(
+        title="❌ An error occurred",
+        description=f"```py\n{stack_trace}\n```",
+        colour=Colour.red(),
+    )
+
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(embed=error_embed, ephemeral=True)
+        else:
+            await interaction.response.send_message(embed=error_embed, ephemeral=True)
+    except nextcord.HTTPException:
+        # The interaction may have expired or Discord may be unavailable.
+        logging.exception("Could not send the command error response")
 
 
 @bot.slash_command(
