@@ -4,15 +4,6 @@ import aiohttp
 import asyncio
 import aiosqlite
 
-logging.basicConfig(
-    filename="logs.log",
-    filemode="a",
-    format="%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s",
-    datefmt="%H:%M:%S",
-    level=logging.DEBUG,
-)
-
-
 async def manage_ratelimit(response: aiohttp.ClientResponse):
     if int(response.headers["RateLimit-Remaining"]) < 10:
         sleep_time = int(response.headers["RateLimit-Reset"])

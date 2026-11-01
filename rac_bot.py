@@ -2571,7 +2571,7 @@ async def update_time_channel():
         collection = db.settings
         time_channel_id = await collection.find_one({"_id": "rac_time_channel"})
         enabled_list = await collection.find_one({"_id": "rac_time_autoupdate"})
-        print(enabled_list)
+        logging.info("Loaded RAC time auto-update settings: %s", enabled_list)
         for server_id in enabled_list["value"]:
             server = bot.get_guild(int(server_id))
             time_channel = server.get_channel(time_channel_id["value"][server_id])

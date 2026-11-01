@@ -8,14 +8,6 @@ import time
 import os
 import sys
 
-logging.basicConfig(
-    filename="logs.log",
-    filemode="a",
-    format="%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s",
-    datefmt="%H:%M:%S",
-    level=logging.DEBUG,
-)
-
 USER_AGENT = os.environ.get("USER_AGENT", "i.didnt.set.a.user.agent@disappointed.sad AI Issue Answering")
 """User agents need to include a form of contacting you as per NS API rules."""
 try:
