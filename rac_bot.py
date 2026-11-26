@@ -30,6 +30,7 @@ from ballsdex_hash import check_balldex_image
 import soccer
 
 load_dotenv()
+EARTH_EQUATORIAL_CIRCUMFERENCE_KM = 40075.017
 RAC_SERVER_ID = 793104002224488481
 OWNER_ID = 813757881723519026  # bohaska's id
 uri = os.getenv('DB_URL')
@@ -3286,11 +3287,22 @@ def parse_map(map_text):
         map_name = settings[20].strip()
     except (IndexError, ValueError) as error:
         raise ValueError("Invalid Azgaar map settings") from error
+    estimated_scale = False
+    if pixel_to_unit is None:
+        svg_line = next((line for line in map_lines if line.startswith('<svg id="map"')), "")
+        width_match = re.search(r'viewBox="[^\"]*\s([\d.]+)\s[\d.]+"', svg_line)
+        if width_match is None:
+            width_match = re.search(r'\bwidth="([\d.]+)', svg_line)
+        if width_match is not None and float(width_match.group(1)) > 0:
+            pixel_to_unit = EARTH_EQUATORIAL_CIRCUMFERENCE_KM / float(width_match.group(1))
+            distance_unit = "km"
+            estimated_scale = True
     azgaar_map = {
         "name": map_name,
         "settings": settings,
         "distance_unit": distance_unit,
         "pixel_to_unit": pixel_to_unit,
+        "estimated_scale": estimated_scale,
         "states": state_info,
     }
     return azgaar_map
@@ -3399,6 +3411,8 @@ async def state_cells(
 
 def state_areas_embed(state_list: list, index: int):
     leaderboard = "## Map: " + state_list[index][0]['map_name'] + "\n\n"
+    if state_list[index][0].get('estimated_scale'):
+        leaderboard += "could not parse map file metadata, estimated Earth-scale area\n\n"
     start_ranking = index * 10 + 1
     for state_index in range(len(state_list[index])):
         leaderboard += f"{start_ranking + state_index}. {state_list[index][state_index]['name']}: {state_list[index][state_index]['area']:,} {state_list[index][state_index]['unit']}²\n"
@@ -3453,6 +3467,7 @@ async def state_areas(
                         'area': int(state['area'] * parsed_map["pixel_to_unit"] ** 2),
                         'unit': parsed_map["distance_unit"],
                         'map_name': parsed_map["name"],
+                        'estimated_scale': parsed_map["estimated_scale"],
                     }
                 )
         except KeyError:
