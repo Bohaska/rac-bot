@@ -28,8 +28,6 @@ from better_view import AutoDisableView
 import json
 from ballsdex_hash import check_balldex_image
 import soccer
-from google import genai
-from google.genai.errors import APIError
 
 load_dotenv()
 RAC_SERVER_ID = 793104002224488481
@@ -720,41 +718,41 @@ async def ai_summarize(messages, prompt_title, status_message):
         prompt_doc = await collection.find_one({"_id": "default_prompt"})
         system_prompt = prompt_doc["content"] if prompt_doc else "You are a helpful assistant."
 
-    contents = f"""{system_prompt}
-    <conversation>
-    """
+    conversation = ""
     for message in messages:
-        contents += f"{message.author.display_name} ({message.jump_url})  {message.created_at.strftime('%Y-%m-%d %H:%M')}:"
+        conversation += f"{message.author.display_name} ({message.jump_url})  {message.created_at.strftime('%Y-%m-%d %H:%M')}:"
         if message.reference is not None:
-            contents += f'\n*Replying to {message.reference.jump_url}*'
-        contents += f"\n    {message.clean_content}\n\n"
-    contents += "\n</conversation>"
+            conversation += f'\n*Replying to {message.reference.jump_url}*'
+        conversation += f"\n    {message.clean_content}\n\n"
+
+    payload = {
+        "model": os.getenv("AGENTFANCLUB_MODEL", "glm-5.3"),
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"<conversation>\n{conversation}\n</conversation>"},
+        ],
+        "max_tokens": 4096,
+    }
+    headers = {
+        "Authorization": f"Bearer {os.environ['AGENTFANCLUB_API_KEY']}",
+        "Content-Type": "application/json",
+    }
 
     try:
-        client = genai.Client()
-        # First attempt with gemini-2.5-flash
-        response = client.models.generate_content(
-            model="gemini-3.1-flash-lite-preview",
-            contents=contents
-        )
-        return response.text
-    except APIError as e:
-        # Check if the error is a 429 RESOURCE_EXHAUSTED
-        if e.code == 429:
-            try:
-                await status_message.edit(
-                    content="Quota exceeded for gemini-3.1-flash-lite-preview. Retrying with gemini-3-flash-preview...")
-                response = client.models.generate_content(
-                    model="gemini-3-flash-preview",
-                    contents=contents
-                )
-                return response.text
-            except Exception as retry_e:
-                return f"An error occurred during retry with gemini-2.0-flash: {retry_e}"
-        else:
-            return f"An API error occurred: {e}"
-    except Exception as e:
-        return f"An error occurred while summarizing the thread: {e}"
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                    "https://api.router.agentfan.club/inference/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=120),
+            ) as response:
+                response_text = await response.text()
+                if response.status >= 400:
+                    return f"An API error occurred while summarizing the thread ({response.status}): {response_text}"
+                response_data = json.loads(response_text)
+        return response_data["choices"][0]["message"]["content"]
+    except (aiohttp.ClientError, asyncio.TimeoutError, json.JSONDecodeError, KeyError, IndexError) as error:
+        return f"An error occurred while summarizing the thread: {error}"
 
 
 @summarize.subcommand(description="Summarize messages in a channel.")
@@ -781,9 +779,9 @@ async def channel(
         )
 ):
     await interaction.response.defer()
-    if not os.getenv("GEMINI_API_KEY"):
+    if not os.getenv("AGENTFANCLUB_API_KEY"):
         await interaction.followup.send(
-            "The `GEMINI_API_KEY` environment variable is not set. Please set it to use this command.")
+            "The `AGENTFANCLUB_API_KEY` environment variable is not set. Please set it to use this command.")
         return
 
     if summarize_channel is None:
@@ -823,9 +821,9 @@ async def thread(
         await interaction.followup.send("This command can only be used in a thread.")
         return
 
-    if not os.getenv("GEMINI_API_KEY"):
+    if not os.getenv("AGENTFANCLUB_API_KEY"):
         await interaction.followup.send(
-            "The `GEMINI_API_KEY` environment variable is not set. Please set it to use this command.")
+            "The `AGENTFANCLUB_API_KEY` environment variable is not set. Please set it to use this command.")
         return
 
     status_message = await interaction.followup.send("Fetching messages in channel...", wait=True)

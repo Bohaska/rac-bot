@@ -8,4 +8,3 @@ markdownify
 aiosqlite
 ImageHash
 gradio
-google-genai
