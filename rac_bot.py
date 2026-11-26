@@ -726,7 +726,7 @@ async def ai_summarize(messages, prompt_title, status_message):
         conversation += f"\n    {message.clean_content}\n\n"
 
     payload = {
-        "model": os.getenv("AGENTFANCLUB_MODEL", "glm-5.3"),
+        "model": os.getenv("AGENTFANCLUB_MODEL", "deepseek-v4.1-flash"),
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"<conversation>\n{conversation}\n</conversation>"},
