@@ -1,6 +1,8 @@
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from nextcord import ui, Interaction
+from nextcord.errors import HTTPException
 from threading import Timer
 from typing import Optional
 
@@ -84,11 +86,20 @@ class AutoDisableView(ui.View):
 
     async def _disable_message_buttons(self) -> None:
         self._disable_children()
-        if self.message_id:
-            await self.interaction.followup.edit_message(self.message_id, view=self)
-        else:
-            await self.interaction.edit_original_message(view=self)
-        self._timer.cancel()
+        try:
+            if self.message_id:
+                await self.interaction.followup.edit_message(self.message_id, view=self)
+            else:
+                await self.interaction.edit_original_message(view=self)
+        except HTTPException as error:
+            # Interaction webhook tokens expire after 15 minutes. A view can
+            # outlive that token (for example after a reconnect), so cleanup
+            # must not create an unhandled background-task exception.
+            if getattr(error, "code", None) != 50027:
+                logging.exception("Failed to disable timed-out Discord view")
+        finally:
+            if self._timer:
+                self._timer.cancel()
 
     async def _disable_view_on_timeout(self) -> None:
         await self._disable_message_buttons()

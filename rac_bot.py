@@ -3327,9 +3327,16 @@ def parse_map(map_text):
     map_lines = combine_svg(map_text)
     state_info = json.loads(map_lines[14])
     settings = map_lines[1].split("|")
-    map_name = settings[20]
-    distance_unit = settings[0]
-    pixel_to_unit = float(settings[1])
+    # The distance scale field is empty in maps exported with some Azgaar
+    # configurations. Cell counts do not depend on it, so keep parsing the
+    # map and let area-based commands report that conversion is unavailable.
+    try:
+        distance_unit = settings[0].strip()
+        pixel_to_unit_text = settings[1].strip()
+        pixel_to_unit = float(pixel_to_unit_text) if pixel_to_unit_text else None
+        map_name = settings[20].strip()
+    except (IndexError, ValueError) as error:
+        raise ValueError("Invalid Azgaar map settings") from error
     azgaar_map = {
         "name": map_name,
         "settings": settings,
@@ -3414,7 +3421,11 @@ async def state_cells(
         return
     map_filename = f"azgaar_map_{interaction.id}"
     map_text = await get_attachment(map_attachment, map_filename)
-    parsed_map = parse_map(map_text)
+    try:
+        parsed_map = parse_map(map_text)
+    except (IndexError, JSONDecodeError, ValueError):
+        await interaction.followup.send("That file is not a valid Azgaar map.")
+        return
     new_state_info = []
     for state in parsed_map["states"]:
         try:
@@ -3473,7 +3484,16 @@ async def state_areas(
         return
     map_filename = f"azgaar_map_{interaction.id}"
     map_text = await get_attachment(map_attachment, map_filename)
-    parsed_map = parse_map(map_text)
+    try:
+        parsed_map = parse_map(map_text)
+    except (IndexError, JSONDecodeError, ValueError):
+        await interaction.followup.send("That file is not a valid Azgaar map.")
+        return
+    if parsed_map["pixel_to_unit"] is None:
+        await interaction.followup.send(
+            "This map does not include a distance scale, so state areas cannot be calculated."
+        )
+        return
     new_state_info = []
     for state in parsed_map["states"]:
         try:
