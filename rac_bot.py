@@ -3244,55 +3244,6 @@ async def channel(
         await interaction.followup.send("Sorry, but losers can't change this setting.")
 
 
-async def generate_ai_image(prompt, size):
-    glif_id = {
-        "Square": "clsy8mkyu00008fjsr5tyzxy0",
-        "Wide": "clsxzqjts0008rrxs68zw8xdh",
-        "Tall": "clsy8rwn0000cj1ncxryy9rd0",
-    }
-    GLIF_API_KEY = os.getenv('GLIF_API_KEY')
-    headers = {
-        "Authorization": "Bearer " + GLIF_API_KEY,
-    }
-    payload = {
-        "inputs": [prompt]
-    }
-    glif_url = "https://simple-api.glif.app/" + glif_id[size]
-    async with aiohttp.ClientSession() as session:
-        image = await session.post(glif_url, headers=headers, json=payload)
-        image = await image.json()
-    return image
-
-
-@bot.slash_command(
-    description="Generate AI images. Uses OpenAI's Dalle-3 image generator.",
-    force_global=True)
-async def ai_image(
-        interaction: Interaction,
-        prompt: str = SlashOption(
-            description="The prompt to give the AI. For flags, mention 'an svg flag' in your prompt for better results.",
-            required=True,
-        ),
-        size: str = SlashOption(
-            description="The size of image you want.",
-            choices=["Square", "Wide", "Tall"],
-            default="Square"),
-):
-    await interaction.response.defer()
-    image = await generate_ai_image(prompt, size)
-    error_message = f"Something went wrong. Try again a few times. If the image's still not producing, it could be that your prompt was moderated, rate limits or just plain bad luck. \n\nHere's the response from the API:\n\n```json\n{image}\n```"
-    try:
-        logging.info(image)
-        image_url = image['output']
-        if image_url is None:
-            await interaction.followup.send(error_message)
-        else:
-            result_embed = Embed(title="Here's your new AI image!", colour=bot_colour)
-            result_embed.set_image(image_url)
-            await interaction.followup.send('', embed=result_embed)
-    except KeyError:
-        await interaction.followup.send(error_message)
-
 
 async def get_attachment(attachment, name):
     await attachment.save(name)
